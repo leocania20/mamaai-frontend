@@ -42,8 +42,13 @@
     "tinyglobby": "^0.2.14",
     "update-browserslist-db": "^1.1.3"
   },
+  "engines": {
+  "node": ">=18.0.0"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": ""
 }
+
+
