@@ -1,150 +1,141 @@
-import { useEffect, useState } from 'react'
-import { supabase } from "../supabaseClient";
+import { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
+import Header from "../components/Header";
+import { useNavigate } from "react-router-dom";
+import dayjs from 'dayjs';
+import 'dayjs/locale/pt'; // se quiser usar português
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 
 export default function ChatMae({ usuario }) {
-  const [especialista, setEspecialista] = useState(null)
-  const [mensagens, setMensagens] = useState([])
-  const [novaMensagem, setNovaMensagem] = useState('')
-  const [especialistas, setEspecialistas] = useState([])
+  const [especialistas, setEspecialistas] = useState([]);
+  const [especialistaAtivo, setEspecialistaAtivo] = useState(null);
+  const [mensagens, setMensagens] = useState([]);
+  const [novaMensagem, setNovaMensagem] = useState('');
 
-  // Ver se a mãe já escolheu especialista
+  // 📌 Listar todos os especialistas aprovados
   useEffect(() => {
-  if (!usuario || !usuario.id) return;
-
-  async function fetchEspecialista() {
-    const { data } = await supabase
-      .from('mae_especialista')
-      .select('especialista_id, especialistas(usuario_id, usuarios(nome))')
-      .eq('mae_id', usuario.id)
-      .single();
-
-    if (data) setEspecialista(data.especialistas);
-  }
-
-  fetchEspecialista();
-}, [usuario]);
-
-  // Listar especialistas para escolher
-  useEffect(() => {
-    async function listar() {
-      const { data } = await supabase
+    async function fetchEspecialistas() {
+      const { data, error } = await supabase
         .from('especialistas')
-        .select('id, area_especializacao, usuario_id, usuarios(nome)')
-        .eq('aprovado', true)
+        .select('id, area_especializacao, biografia, usuario_id, usuarios (nome, data_nascimento)')
+        .eq('aprovado', true);
 
-      setEspecialistas(data || [])
+      if (data) setEspecialistas(data);
     }
-    listar()
-  }, [])
 
-  // Enviar mensagem
-  const enviar = async () => {
-    if (!novaMensagem.trim() || !especialista) return
-    await supabase.from('mensagens_chat').insert({
-      remetente_id: usuario.id,
-      destinatario_id: especialista.usuario_id,
-      mensagem: novaMensagem
-    })
-    setNovaMensagem('')
-  }
+    fetchEspecialistas();
+  }, []);
+ 
 
-  // Carregar mensagens
+  // 📨 Carregar mensagens com especialista selecionado
   useEffect(() => {
-    if (!especialista) return
-    async function carregarMensagens() {
+    if (!especialistaAtivo) return;
+
+    async function fetchMensagens() {
       const { data } = await supabase
         .from('mensagens_chat')
         .select('*')
         .or(`remetente_id.eq.${usuario.id},destinatario_id.eq.${usuario.id}`)
-        .order('enviada_em')
+        .order('enviada_em');
 
       const filtradas = data.filter(m =>
-        [m.remetente_id, m.destinatario_id].includes(especialista.usuario_id)
-      )
+        [m.remetente_id, m.destinatario_id].includes(especialistaAtivo.usuario_id)
+      );
 
-      setMensagens(filtradas)
+      setMensagens(filtradas);
     }
 
-    carregarMensagens()
+    fetchMensagens();
 
     const canal = supabase
       .channel('chat_mensagens')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'mensagens_chat' },
-        carregarMensagens
-      )
-      .subscribe()
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'mensagens_chat'
+      }, fetchMensagens)
+      .subscribe();
 
-    return () => supabase.removeChannel(canal)
-  }, [especialista])
+    return () => supabase.removeChannel(canal);
+  }, [especialistaAtivo]);
 
-  // Selecionar especialista
-  const selecionar = async e => {
-    const idSelecionado = e.target.value
-    const especialistaEscolhido = especialistas.find(e => e.id === idSelecionado)
-
-    await supabase.from('mae_especialista').insert({
-      mae_id: usuario.id,
-      especialista_id: idSelecionado
-    })
-
-    setEspecialista(especialistaEscolhido)
-  }
+  const enviarMensagem = async () => {
+    if (!novaMensagem.trim()) return;
+    await supabase.from('mensagens_chat').insert({
+      remetente_id: usuario.id,
+      destinatario_id: especialistaAtivo.usuario_id,
+      mensagem: novaMensagem
+    });
+    setNovaMensagem('');
+  };
 
   return (
-    <div className="max-w-2xl mx-auto bg-white p-4 rounded shadow mt-8">
-      <h1 className="text-xl font-semibold mb-4">Chat com Especialista</h1>
+    <div className="p-6 max-w-4xl mx-auto">
+      <Header />
+      <h1 className="text-3xl font-bold mb-6">Especialistas disponíveis</h1>
 
-      {!especialista ? (
-        <>
-          <label className="block mb-2">Escolha seu especialista:</label>
-          <select
-            className="w-full border p-2 rounded"
-            onChange={selecionar}
-            defaultValue=""
-          >
-            <option value="" disabled>Selecione</option>
-            {especialistas.map(e => (
-              <option key={e.id} value={e.id}>
-                {e.usuarios.nome} – {e.area_especializacao}
-              </option>
-            ))}
-          </select>
-        </>
-      ) : (
-        <>
-          <div className="h-80 overflow-y-auto bg-gray-100 p-3 rounded mb-4">
-            {mensagens.map(m => (
+      <div className="grid md:grid-cols-2 gap-6">
+        {especialistas.map((esp) => {
+          const idade = esp.usuarios?.data_nascimento
+            ? dayjs().diff(esp.usuarios.data_nascimento, 'year')
+            : '-';
+
+          return (
+            <div key={esp.id} className="bg-white shadow-md rounded-lg p-5 transition-transform duration-300 hover:scale-[1.02]">
+              <h2 className="text-lg font-semibold">{esp.usuarios.nome}</h2>
+              <p className="text-sm text-gray-600">Idade: {idade}</p>
+              <p className="text-sm text-gray-600 mt-1"><strong>Especialização:</strong> {esp.area_especializacao}</p>
+              <p className="text-sm text-gray-800 mt-2">{esp.biografia}</p>
+              <button
+                className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+                onClick={() => setEspecialistaAtivo(esp)}
+              >
+                Iniciar conversa
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 🧾 Chat */}
+      {especialistaAtivo && (
+        <div className="fixed top-0 right-0 w-full md:w-1/2 h-full bg-white border-l shadow-2xl z-50 transition-all duration-500 overflow-y-auto p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Chat com {especialistaAtivo.usuarios.nome}</h2>
+            <button onClick={() => setEspecialistaAtivo(null)} className="text-red-600 hover:underline">Fechar</button>
+          </div>
+
+          <div className="h-96 overflow-y-scroll bg-gray-100 p-4 rounded">
+            {mensagens.map((msg) => (
               <div
-                key={m.id}
-                className={`mb-2 p-2 rounded-md max-w-[70%] ${
-                  m.remetente_id === usuario.id
-                    ? 'bg-green-200 ml-auto text-right'
-                    : 'bg-blue-100'
+                key={msg.id}
+                className={`mb-3 max-w-[70%] p-2 rounded ${
+                  msg.remetente_id === usuario.id ? 'ml-auto bg-green-200 text-right' : 'bg-blue-200'
                 }`}
               >
-                {m.mensagem}
+                {msg.mensagem}
               </div>
             ))}
           </div>
 
-          <div className="flex">
+          <div className="mt-4 flex">
             <input
-              className="flex-1 border p-2 rounded-l"
+              type="text"
+              className="flex-1 border border-gray-300 rounded-l px-3 py-2"
               placeholder="Digite sua mensagem..."
               value={novaMensagem}
-              onChange={e => setNovaMensagem(e.target.value)}
+              onChange={(e) => setNovaMensagem(e.target.value)}
             />
             <button
-              className="bg-blue-600 text-white px-4 rounded-r"
-              onClick={enviar}
+              className="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700"
+              onClick={enviarMensagem}
             >
               Enviar
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
-  )
+  );
 }
