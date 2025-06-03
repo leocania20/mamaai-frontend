@@ -62,6 +62,7 @@ export default function ChatMae({ usuario }) {
 
   const enviarMensagem = async () => {
     if (!novaMensagem.trim()) return;
+    if (!usuario || !especialistaAtivo) return;
     await supabase.from('mensagens_chat').insert({
       remetente_id: usuario.id,
       destinatario_id: especialistaAtivo.usuario_id,
