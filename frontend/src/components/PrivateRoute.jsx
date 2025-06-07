@@ -21,7 +21,7 @@ export default function PrivateRoute({ children }) {
     };
   }, []);
 
-  if (loading) return <p>Carregando...</p>;
+  if (loading) return <p>Carregandosss...</p>;
 
   if (!session) return <Navigate to="/" />;
 
