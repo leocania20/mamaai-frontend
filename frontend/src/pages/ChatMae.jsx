@@ -15,7 +15,6 @@ export default function ChatMae({ usuario }) {
   const [novaMensagem, setNovaMensagem] = useState('');
   const [especialistasComConversa, setEspecialistasComConversa] = useState([]);
 
-  // 📌 Buscar especialistas
   useEffect(() => {
     async function fetchEspecialistas() {
       const { data, error } = await supabase
@@ -44,7 +43,6 @@ export default function ChatMae({ usuario }) {
       }
 
       const ids = new Set();
-
       data.forEach((msg) => {
         if (msg.remetente_id === usuario.id) {
           ids.add(msg.destinatario_id);
@@ -60,7 +58,6 @@ export default function ChatMae({ usuario }) {
     fetchConversasAnteriores();
   }, [usuario]);
 
-  // 📨 Carregar mensagens e escutar realtime
   useEffect(() => {
     if (!especialistaAtivo || !usuario) return;
 
@@ -109,15 +106,17 @@ export default function ChatMae({ usuario }) {
     };
   }, [especialistaAtivo, usuario]);
 
-  // ✉️ Enviar nova mensagem
   const enviarMensagem = async () => {
     if (!novaMensagem.trim() || !usuario?.id || !especialistaAtivo?.usuario_id) return;
 
-    const { data, error } = await supabase.from('mensagens_chat').insert({
-      remetente_id: usuario.id,
-      destinatario_id: especialistaAtivo.usuario_id,
-      mensagem: novaMensagem,
-    }).select();
+    const { data, error } = await supabase
+      .from('mensagens_chat')
+      .insert({
+        remetente_id: usuario.id,
+        destinatario_id: especialistaAtivo.usuario_id,
+        mensagem: novaMensagem,
+      })
+      .select();
 
     if (error) {
       console.error('Erro ao enviar mensagem:', error.message);
@@ -125,9 +124,69 @@ export default function ChatMae({ usuario }) {
       return;
     }
 
-    setMensagens((prev) => [...prev, data[0]]); // Adiciona ao chat instantaneamente
+    setMensagens((prev) => [...prev, data[0]]);
     setNovaMensagem('');
   };
+
+  const iniciarConversa = async (esp) => {
+  if (!usuario?.id || !esp?.id) {
+    console.error("Usuário ou especialista inválido:", usuario, esp);
+    return;
+  }
+
+  // Buscar o ID da mãe baseado no usuario.id
+  const { data: maeData, error: maeError } = await supabase
+  .from('maes')
+  .select('id')
+  .eq('usuario_id', usuario.id)
+  .maybeSingle();
+
+if (maeError) {
+  console.error('Erro ao buscar dados da mãe:', maeError.message);
+  return;
+}
+
+if (!maeData) {
+  console.warn('Nenhuma mãe encontrada para esse usuário.');
+  return;
+}
+
+console.log('Mãe encontrada:', maeData);
+
+
+  const maeId = maeData.id;
+
+  // Verificar se já existe associação
+  const { data: existente, error: fetchError } = await supabase
+    .from('mae_especialista')
+    .select('*')
+    .eq('mae_id', maeId)
+    .eq('especialista_id', esp.id);
+
+  if (fetchError) {
+    console.error('Erro ao verificar associação:', fetchError.message);
+    return;
+  }
+
+  if (!existente || existente.length === 0) {
+    const { error: insertError } = await supabase.from('mae_especialista').insert({
+      mae_id: maeId,
+      especialista_id: esp.id,
+    });
+
+    if (insertError) {
+      console.error('Erro ao associar mãe e especialista:', insertError.message);
+      return;
+    }
+
+    console.log('Associação mãe-especialista criada com sucesso');
+  }
+
+  setEspecialistaAtivo(esp);
+};
+
+
+
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -139,7 +198,6 @@ export default function ChatMae({ usuario }) {
           const idade = esp.usuarios?.data_nascimento
             ? dayjs().diff(esp.usuarios.data_nascimento, 'year')
             : '-';
-
           const temConversa = especialistasComConversa.includes(esp.usuario_id);
 
           return (
@@ -155,7 +213,7 @@ export default function ChatMae({ usuario }) {
               <p className="text-sm text-gray-800 mt-2">{esp.biografia}</p>
               <button
                 className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
-                onClick={() => setEspecialistaAtivo(esp)}
+                onClick={() => iniciarConversa(esp)}
               >
                 {temConversa ? 'Continuar conversa' : 'Iniciar conversa'}
               </button>
@@ -164,40 +222,48 @@ export default function ChatMae({ usuario }) {
         })}
       </div>
 
-      {/* Chat */}
       {especialistaAtivo && (
-        <div className="fixed top-0 right-0 w-full md:w-1/2 h-full bg-white border-l shadow-2xl z-50 transition-all duration-500 overflow-y-auto p-6">
+        <div className="fixed inset-0 md:right-0 md:left-auto md:w-1/2 w-full h-full bg-white border-l shadow-2xl z-50 transition-all duration-500 overflow-y-auto p-4 sm:p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Chat com {especialistaAtivo.usuarios.nome}</h2>
+            <h2 className="text-xl font-semibold">💬 Chat com {especialistaAtivo.usuarios.nome}</h2>
             <button onClick={() => setEspecialistaAtivo(null)} className="text-red-600 hover:underline">
               Fechar
             </button>
           </div>
 
-          <div className="h-96 overflow-y-scroll bg-gradient-to-b from-blue-100 via-white to-blue-100 p-4 rounded-lg shadow-inner">
-            {mensagens.map((msg) => (
-              <div
-                key={msg.id}
-                className={`mb-3 max-w-[70%] px-4 py-2 rounded-2xl text-sm ${
-                  msg.remetente_id === usuario.id ? 'ml-auto bg-green-300 text-right' : 'bg-white border border-blue-200'
-                }`}
-              >
-                {msg.mensagem}
-              </div>
-            ))}
+          <div className="h-[65vh] overflow-y-scroll bg-gradient-to-b from-blue-50 via-white to-blue-50 p-4 rounded-lg shadow-inner">
+            {mensagens.map((msg) => {
+              const isRemetente = msg.remetente_id === usuario.id;
+              const hora = dayjs(msg.enviada_em).format('HH:mm');
+              const nome = isRemetente ? 'Você' : especialistaAtivo.usuarios.nome;
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`mb-4 max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
+                    isRemetente
+                      ? 'ml-auto bg-green-200 text-right rounded-br-none'
+                      : 'bg-white border border-gray-300 rounded-bl-none'
+                  }`}
+                >
+                  <p>{msg.mensagem}</p>
+                  <div className="mt-1 text-xs text-gray-500">{nome} · {hora}</div>
+                </div>
+              );
+            })}
           </div>
 
-          <div className="mt-4 flex">
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
             <input
               type="text"
-              className="flex-1 border border-gray-300 rounded-l px-3 py-2"
-              placeholder="Digite sua mensagem..."
+              className="flex-1 border border-gray-300 rounded px-3 py-2"
+              placeholder="Escreva algo gentil..."
               value={novaMensagem}
               onChange={(e) => setNovaMensagem(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && enviarMensagem()}
             />
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700"
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full sm:w-auto"
               onClick={enviarMensagem}
             >
               Enviar
@@ -207,4 +273,4 @@ export default function ChatMae({ usuario }) {
       )}
     </div>
   );
-} 
+}

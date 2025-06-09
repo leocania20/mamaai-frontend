@@ -1,37 +1,14 @@
-import Header from "../../components/Header";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabaseClient";
 import { motion } from "framer-motion";
-import { FaBaby, FaHeartbeat, FaComments, FaAppleAlt } from "react-icons/fa";
-
-const conteudos = [
-  {
-    id: 1,
-    titulo: "Alimentação saudável na gravidez",
-    imagem: "https://via.placeholder.com/300x200",
-    descricao: "Descubra os alimentos essenciais para o bem-estar da mãe e do bebé.",
-    conteudo: "Durante a gravidez, é essencial manter uma alimentação rica em vitaminas, proteínas e minerais. Evite alimentos processados, açúcar em excesso e bebidas com cafeína.",
-  },
-  {
-    id: 2,
-    titulo: "Exercícios leves para gestantes",
-    imagem: "https://via.placeholder.com/300x200",
-    descricao: "Aprenda exercícios seguros e benéficos durante a gravidez.",
-    conteudo: "Exercícios como caminhada, ioga e alongamentos ajudam a manter o corpo ativo, reduzem o estresse e melhoram a circulação.",
-  },
-  {
-    id: 3,
-    titulo: "Como lidar com as emoções na gestação",
-    imagem: "https://via.placeholder.com/300x200",
-    descricao: "Estratégias para lidar com ansiedade, mudanças de humor e muito mais.",
-    conteudo: "A gravidez pode causar flutuações emocionais. Técnicas de respiração, diálogo com o parceiro e suporte psicológico são fundamentais.",
-  },
-];
+import { FaBaby, FaHeartbeat, FaComments, FaAppleAlt, FaRobot } from "react-icons/fa";
+import Header from "../../components/Header";
 
 export default function MaeDashboard() {
   const navigate = useNavigate();
   const [selectedContent, setSelectedContent] = useState(null);
+  const [contents, setContents] = useState([]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -39,7 +16,17 @@ export default function MaeDashboard() {
       if (!session) navigate("/login");
     };
     checkSession();
+    fetchContents();
   }, [navigate]);
+
+  const fetchContents = async () => {
+    const { data, error } = await supabase.from("conteudo").select("*");
+    if (error) {
+      console.error("Error fetching contents:", error);
+    } else {
+      setContents(data);
+    }
+  };
 
   const features = [
     {
@@ -61,6 +48,11 @@ export default function MaeDashboard() {
       icon: <FaComments className="text-purple-500 text-5xl" />,
       title: "Chat com Especialistas",
       onClick: () => navigate("/chatmae"),
+    },
+    {
+      icon: <FaRobot className="text-blue-500 text-5xl" />,
+      title: "Inteligência Artificial",
+      onClick: () => navigate("/inteligencia-artificial"),
     },
   ];
 
@@ -94,7 +86,7 @@ export default function MaeDashboard() {
       <main className="px-6 pb-10">
         <h3 className="text-2xl font-bold text-gray-800 mb-6">Conteúdos recomendados</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {conteudos.map((item) => (
+          {contents.map((item) => (
             <motion.div
               key={item.id}
               whileHover={{ scale: 1.03 }}

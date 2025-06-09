@@ -33,12 +33,14 @@ export default function Login() {
       return;
     }
 
-    if (isLogin) {
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      if (isLogin) {
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (loginError) {
-        setMsg({ tipo: "erro", texto: loginError.message });
-      } else {
+        if (loginError) {
+          throw new Error(loginError.message);
+        }
+
         const { data: userInfo, error: userError } = await supabase
           .from("usuarios")
           .select("tipo_usuario")
@@ -46,58 +48,75 @@ export default function Login() {
           .single();
 
         if (userError) {
-          setMsg({ tipo: "erro", texto: "Não foi possível recuperar os dados do utilizador." });
-        } else {
-          const tipo = userInfo.tipo_usuario;
-          if (tipo === "mae") navigate("/dashboard/mae");
-          else if (tipo === "especialista") navigate("/dashboard/especialista");
-          else if (tipo === "admin") navigate("/admin");
-          else navigate("/");
-          setMsg({ tipo: "sucesso", texto: "Login realizado com sucesso!" });
+          throw new Error("Não foi possível recuperar os dados do utilizador.");
         }
-      }
-    } else {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
 
-      if (signUpError) {
-        setMsg({ tipo: "erro", texto: signUpError.message });
+        const tipo = userInfo.tipo_usuario;
+        if (tipo === "mae") navigate("/dashboard/mae");
+        else if (tipo === "especialista") navigate("/dashboard/especialista");
+        else if (tipo === "admin") navigate("/dashboard/admin");
+        else navigate("/");
+        setMsg({ tipo: "sucesso", texto: "Login realizado com sucesso!" });
       } else {
-        const userId = data.user?.id;
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+        });
 
-        if (!userId) {
-          setMsg({ tipo: "erro", texto: "Não foi possível obter o ID do utilizador." });
-          setLoading(false);
-          return;
+        if (signUpError) {
+          throw new Error(signUpError.message);
         }
 
-        const { error: insertError } = await supabase
+        const userId = data.user?.id;
+        if (!userId) {
+          throw new Error("Não foi possível obter o ID do utilizador.");
+        }
+
+        const { error: insertUserError } = await supabase
           .from("usuarios")
           .insert([
             {
               id: userId,
               nome,
               email,
-              senha: password, // Opcional: encriptar com bcrypt
+              senha: password, // TODO: Hash password in production
               data_nascimento,
               tipo_usuario: tipo_utilizador.toLowerCase(),
             },
           ]);
 
-        if (insertError) {
-          setMsg({ tipo: "erro", texto: insertError.message });
-        } else {
-          setMsg({
-            tipo: "sucesso",
-            texto: "Cadastro realizado com sucesso! Verifique seu e-mail.",
-          });
+        if (insertUserError) {
+          throw new Error(insertUserError.message);
         }
-      }
-    }
 
-    setLoading(false);
+        if (tipo_utilizador.toLowerCase() === "especialista") {
+          const { error: insertEspecialistaError } = await supabase
+            .from("especialistas")
+            .insert([
+              {
+                usuario_id: userId,
+                area_especializacao: "", // Add form field for this
+                biografia: "", // Add form field for this
+                aprovado: false,
+              },
+            ]);
+
+          if (insertEspecialistaError) {
+            console.error("Erro ao criar registro de especialista:", insertEspecialistaError);
+            throw new Error("Erro ao criar o registro de especialista.");
+          }
+        }
+
+        setMsg({
+          tipo: "sucesso",
+          texto: "Cadastro realizado com sucesso! Verifique seu e-mail.",
+        });
+      }
+    } catch (error) {
+      setMsg({ tipo: "erro", texto: error.message });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -141,7 +160,7 @@ export default function Login() {
                 >
                   <option value="">Selecione o tipo</option>
                   <option value="mae">Mãe</option>
-                  {/* Você pode adicionar mais tipos aqui, como especialista ou admin */}
+                  <option value="especialista">Especialista</option>
                 </select>
               </>
             )}
